@@ -15,8 +15,6 @@ Some key use cases for Node.js include building web servers, creating REST APIs,
 ## Explain the difference between CommonJS and ES Modules. Give a code example of each.
 
 **CommonJS (default in Node.js):**
-```js
-// Answer here..
 
   CommonJS is the traditional module system used in Node.js. It uses require() to import modules and 
     module.exports to export them.
@@ -25,14 +23,11 @@ Some key use cases for Node.js include building web servers, creating REST APIs,
     function add(a, b) { return a + b; } module.exports = { add }; 
      // app.js 
      const math = require("./math"); console.log(math.add(2, 3));
-```
+
 
 **ES Modules (supported in modern Node.js):**
-```js
-// Answer here..
 ES Modules are the modern JavaScript module system. They use import to load modules and export to share code. ES Modules work in modern browsers and are also supported in Node.js.
 // math.js 
 export function add(a, b) { return a + b; } 
 // app.js
  import { add } from "./math.js"; console.log(add(2, 3));
-``` 
