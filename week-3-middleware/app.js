@@ -3,8 +3,16 @@ const { randomUUID } = require("crypto");
 const path = require("path");
 
 const dogsRouter = require("./routes/dogs");
+const userRouter = require("./routes/userRoutes");
+const taskRouter = require("./routes/taskRoutes");
+const authMiddleware = require("./middleware/auth");
 
 const app = express();
+
+// Temporary in-memory storage
+global.users = global.users || [];
+global.tasks = global.tasks || [];
+global.user_id = global.user_id || null;
 
 // 1. Request ID middleware
 app.use((req, res, next) => {
@@ -33,7 +41,13 @@ app.use(express.static(path.join(__dirname, "public")));
 // 5. Dog routes
 app.use("/", dogsRouter); // Do not remove this line
 
-// 6. 404 middleware
+// 6. Public user routes
+app.use("/api/users", userRouter);
+
+// 7. Protected task routes
+app.use("/api/tasks", authMiddleware, taskRouter);
+
+// 8. 404 middleware
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
@@ -41,7 +55,7 @@ app.use((req, res) => {
   });
 });
 
-// 7. Error-handling middleware
+// 9. Error-handling middleware
 app.use((err, req, res, next) => {
   console.error(err);
 
