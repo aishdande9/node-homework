@@ -6,9 +6,12 @@ const prisma = require("./db/prisma");
 
 const userRoutes = require("./routes/userRoutes");
 const taskRoutes = require("./routes/taskRoutes");
+const analyticsRoutes = require("./routes/analyticsRoutes");
+const auth = require("./middleware/auth");
 
 const notFound = require("./middleware/not-found");
 const errorHandler = require("./middleware/error-handler");
+
 
 const app = express();
 
@@ -20,6 +23,9 @@ app.use(express.json());
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/tasks", auth, taskRoutes);
+app.use("/api/analytics", auth, analyticsRoutes);
 
 
 // Health check

@@ -49,39 +49,82 @@ const register = async (req, res, next) => {
   try {
     const hashedPassword = await hashPassword(value.password);
 
-    const newUser = await prisma.user.create({
-      data: {
-        email: value.email,
-        name: value.name,
-        hashedPassword: hashedPassword,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email: value.email,
+          name: value.name,
+          hashedPassword,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+        },
+      });
+
+      const welcomeTaskData = [
+        {
+          title: "Complete your profile",
+          priority: "medium",
+          userId: newUser.id,
+        },
+        {
+          title: "Add your first task",
+          priority: "high",
+          userId: newUser.id,
+        },
+        {
+          title: "Explore the app",
+          priority: "low",
+          userId: newUser.id,
+        },
+      ];
+
+      await tx.task.createMany({
+        data: welcomeTaskData,
+      });
+
+      const welcomeTasks = await tx.task.findMany({
+        where: {
+          userId: newUser.id,
+          title: {
+            in: welcomeTaskData.map((task) => task.title),
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          userId: true,
+          priority: true,
+        },
+      });
+
+      return {
+        user: newUser,
+        welcomeTasks,
+      };
     });
 
-    global.user_id = newUser.id;
+    global.user_id = result.user.id;
 
     return res.status(201).json({
-      name: newUser.name,
-      email: newUser.email,
+      user: result.user,
+      welcomeTasks: result.welcomeTasks,
+      transactionStatus: "success",
     });
   } catch (err) {
-    if (
-      err.name === "PrismaClientKnownRequestError" &&
-      err.code === "P2002"
-    ) {
+    if (err.code === "P2002") {
       return res.status(400).json({
-        message: "User already exists",
+        error: "Email already registered",
       });
     }
 
     return next(err);
   }
 };
-
 const logon = async (req, res, next) => {
   try {
     const email = req.body?.email?.trim().toLowerCase();
