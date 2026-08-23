@@ -1,60 +1,82 @@
+require("dotenv").config();
+
 const express = require("express");
 
-const timeRoutes = require("./routes/timeRoutes");
+const prisma = require("./db/prisma");
+
 const userRoutes = require("./routes/userRoutes");
+const taskRoutes = require("./routes/taskRoutes");
+
 const notFound = require("./middleware/not-found");
 const errorHandler = require("./middleware/error-handler");
-const authMiddleware = require("./middleware/auth");
-const taskRouter = require("./routes/taskRoutes");
-const pool = require("./db/pg-pool");
 
 const app = express();
 
-global.user_id = null;
 
+// Middleware
 app.use(express.json());
 
+
+// Routes
+app.use("/api/users", userRoutes);
+app.use("/api/tasks", taskRoutes);
+
+
+// Health check
 app.get("/health", async (req, res) => {
   try {
-    await pool.query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
 
-    res.json({
+    return res.status(200).json({
       status: "ok",
       db: "connected",
     });
   } catch (err) {
-    res.status(500).json({
-      message: `db not connected, error: ${err.message}`,
+    return res.status(500).json({
+      status: "error",
+      db: "not connected",
+      error: err.message,
     });
   }
 });
 
-app.use("/api", timeRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/tasks", authMiddleware, taskRouter);
 
+// Not found middleware
 app.use(notFound);
+
+
+// Error handler
 app.use(errorHandler);
 
-const port = 3000;
+
+// Server
+const port = process.env.PORT || 3000;
 
 const server = app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+  console.log(`Server is listening on port ${port}`);
 });
 
-async function shutdown() {
+
+// Graceful shutdown
+const shutdown = async () => {
   console.log("Shutting down server...");
 
-  server.close(async () => {
-    await pool.end();
-    process.exit(0);
-  });
-}
+  try {
+    await prisma.$disconnect();
+    console.log("Prisma disconnected");
+
+    server.close(() => {
+      console.log("Server closed");
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error("Error during shutdown:", err);
+    process.exit(1);
+  }
+};
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-module.exports = {
-  app,
-  server,
-};
+
+module.exports = app;
