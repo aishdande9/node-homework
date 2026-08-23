@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const util = require("util");
 
 const pool = require("../db/pg-pool");
+const prisma = require("../db/prisma");
 const { userSchema } = require("../validation/userSchema");
 
 const scrypt = util.promisify(crypto.scrypt);
@@ -48,53 +49,101 @@ const register = async (req, res, next) => {
   try {
     const hashedPassword = await hashPassword(value.password);
 
-    const result = await pool.query(
-      `INSERT INTO users (email, name, hashed_password)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, name`,
-      [value.email, value.name, hashedPassword],
-    );
+    const result = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email: value.email,
+          name: value.name,
+          hashedPassword,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+        },
+      });
 
-    const newUser = result.rows[0];
+      const welcomeTaskData = [
+        {
+          title: "Complete your profile",
+          priority: "medium",
+          userId: newUser.id,
+        },
+        {
+          title: "Add your first task",
+          priority: "high",
+          userId: newUser.id,
+        },
+        {
+          title: "Explore the app",
+          priority: "low",
+          userId: newUser.id,
+        },
+      ];
 
-    global.user_id = newUser.id;
+      await tx.task.createMany({
+        data: welcomeTaskData,
+      });
+
+      const welcomeTasks = await tx.task.findMany({
+        where: {
+          userId: newUser.id,
+          title: {
+            in: welcomeTaskData.map((task) => task.title),
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          userId: true,
+          priority: true,
+        },
+      });
+
+      return {
+        user: newUser,
+        welcomeTasks,
+      };
+    });
+
+    global.user_id = result.user.id;
 
     return res.status(201).json({
-      name: newUser.name,
-      email: newUser.email,
+      user: result.user,
+      welcomeTasks: result.welcomeTasks,
+      transactionStatus: "success",
     });
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.code === "P2002") {
       return res.status(400).json({
-        message: "User already exists",
+        error: "Email already registered",
       });
     }
 
     return next(err);
   }
 };
-
 const logon = async (req, res, next) => {
   try {
     const email = req.body?.email?.trim().toLowerCase();
     const password = req.body?.password;
 
-    const result = await pool.query(
-      "SELECT id, email, name, hashed_password FROM users WHERE email = $1",
-      [email],
-    );
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({
         error: "Invalid email or password",
       });
     }
-
-    const user = result.rows[0];
+    
 
     const goodCredentials =
       typeof password === "string" &&
-      (await comparePassword(password, user.hashed_password));
+      (await comparePassword(password, user.hashedPassword));
 
     if (!goodCredentials) {
       return res.status(401).json({
